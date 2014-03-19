@@ -23,5 +23,8 @@
   "bugs": {
     "url": "https://github.com/newrelic/yakaa/issues"
   },
-  "homepage": "https://github.com/newrelic/yakaa"
+  "homepage": "https://github.com/newrelic/yakaa",
+  "dependencies": {
+    "tunnel-client": "git://github.com/jclulow/node-tunnel-client.git#master"
+  }
 }
