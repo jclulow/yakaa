@@ -25,6 +25,6 @@
   },
   "homepage": "https://github.com/newrelic/yakaa",
   "dependencies": {
-    "tunnel-client": "^0.0.1"
+    "tunnel-client": "git://github.com/jclulow/node-tunnel-client.git#master"
   }
 }
