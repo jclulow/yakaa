@@ -59,12 +59,8 @@ function Agent(options) {
 
   this.tunnelClient = null;
   if (this.options.proxy) {
-    if (this.options.proxy.protocol !== 'http:') {
-      throw new Error('invalid proxy protocol: "' + this.options.proxy.protocol + '"');
-    }
     this.tunnelClient = new TunnelClient({
-      proxy_host: this.options.proxy.hostname || this.options.proxy.host,
-      proxy_port: Number(this.options.proxy.port),
+      proxy_url: this.options.proxy
     });
   }
 
