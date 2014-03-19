@@ -59,14 +59,13 @@ function Agent(options) {
 
   this.tunnelClient = null;
   if (this.options.proxy) {
-    if (this.options.proxy.type === 'http-connect') {
-      this.tunnelClient = new TunnelClient({
-        proxy_host: this.options.proxy.host,
-        proxy_port: this.options.proxy.port,
-      });
-    } else {
-      throw new Error('invalid proxy type: "' + this.options.proxy.type + '"');
+    if (this.options.proxy.protocol !== 'http:') {
+      throw new Error('invalid proxy protocol: "' + this.options.proxy.protocol + '"');
     }
+    this.tunnelClient = new TunnelClient({
+      proxy_host: this.options.proxy.hostname || this.options.proxy.host,
+      proxy_port: Number(this.options.proxy.port),
+    });
   }
 
   this.keepAliveMsecs = this.options.keepAliveMsecs || 1000;
