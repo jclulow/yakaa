@@ -27,6 +27,8 @@ var util = require('util');
 
 var debug = require('./lib/debuglog.js')('httpagent');
 
+var TunnelClient = require('tunnel-client').TunnelClient;
+
 // New Agent code.
 
 // The largest departure from the previous implementation is that
@@ -55,6 +57,18 @@ function Agent(options) {
   this.sockets     = {};
   this.freeSockets = {};
 
+  this.tunnelClient = null;
+  if (this.options.proxy) {
+    if (this.options.proxy.type === 'http-connect') {
+      this.tunnelClient = new TunnelClient({
+        proxy_host: this.options.proxy.host,
+        proxy_port: this.options.proxy.port,
+      });
+    } else {
+      throw new Error('invalid proxy type: "' + this.options.proxy.type + '"');
+    }
+  }
+
   this.keepAliveMsecs = this.options.keepAliveMsecs || 1000;
   this.keepAlive      = this.options.keepAlive || false;
 
@@ -62,6 +76,17 @@ function Agent(options) {
   this.maxFreeSockets = this.options.maxFreeSockets || 256;
 
   var self = this;
+  this.on('tunnelError', function(error, options) {
+    var name = self.getName(options);
+    debug('agent.on(tunnelError)', name);
+
+    if (self.requests[name].length) {
+      self.requests[name].shift().emit('error', error);
+      if (self.requests[name].length === 0) {
+        delete self.requests[name];
+      }
+    }
+  });
   this.on('free', function(socket, options) {
     var name = self.getName(options);
     debug('agent.on(free)', name);
@@ -199,7 +224,18 @@ Agent.prototype.addRequest = function(req, options) {
   } else if (sockLen < this.maxSockets) {
     debug('call onSocket', name, sockLen, freeLen);
     // If we are under maxSockets create a new one.
-    req.onSocket(this.createSocket(req, options));
+    this.createSocket(req, options, function(err, socket) {
+      debug('createSocket error', err);
+      if (err) {
+        req.emit('error', err);
+        return;
+      }
+      socket.removeAllListeners('connect');
+      req.onSocket(socket);
+      setImmediate(function() {
+        socket.emit('connect');
+      });
+    });
   } else {
     debug('wait for socket');
     // We are over limit so we'll add it to the queue.
@@ -210,7 +246,7 @@ Agent.prototype.addRequest = function(req, options) {
   }
 };
 
-Agent.prototype.createSocket = function(req, options) {
+Agent.prototype.createSocket = function(req, options, callback) {
   debug('createSocket');
   var self = this;
   options = util._extend({}, options);
@@ -228,7 +264,23 @@ Agent.prototype.createSocket = function(req, options) {
 
   debug('createConnection', name, options);
   options.encoding = null;
-  var s = self.createConnection(options);
+  if (self.tunnelClient) {
+    self.tunnelClient.connect(options.host, options.port, function (err, socket) {
+      if (err) {
+        callback(err);
+        return;
+      }
+      self._afterCreateSocket(name, options, socket, callback);
+    });
+  } else {
+    self._afterCreateSocket(name, options, self.createConnection(options), callback);
+  }
+};
+
+Agent.prototype._afterCreateSocket = function(name, options, s, callback) {
+  debug('_afterCreateSocket');
+  var self = this;
+
   if (!self.sockets[name]) {
     self.sockets[name] = [];
   }
@@ -248,6 +300,11 @@ Agent.prototype.createSocket = function(req, options) {
     self.emit('free', s, options);
   }
   s.on('free', onFree);
+
+  function onTunnelError(err) {
+    self.emit('tunnelError', err, options);
+  }
+  s.on('tunnelError', onTunnelError);
 
   function onClose() {
     debug('CLIENT socket onClose');
@@ -269,7 +326,7 @@ Agent.prototype.createSocket = function(req, options) {
     s.removeListener('agentRemove', onRemove);
   }
   s.on('agentRemove', onRemove);
-  return s;
+  callback(null, s);
 };
 
 Agent.prototype.removeSocket = function(s, options) {
@@ -296,7 +353,13 @@ Agent.prototype.removeSocket = function(s, options) {
     debug('removeSocket, have a request, make a socket');
     var req = this.requests[name][0];
     // If we have pending requests and a socket gets closed make a new one
-    this.createSocket(req, options).emit('free');
+    this.createSocket(req, options, function(err, socket) {
+      if (err) {
+        socket.emit('tunnelError', err);
+      } else {
+        socket.emit('free');
+      }
+    });
   }
 };
 
