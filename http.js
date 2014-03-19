@@ -165,6 +165,16 @@ Agent.defaultMaxSockets = Infinity;
 
 Agent.prototype.createConnection = net.createConnection;
 
+Agent.prototype._createConnection = function(options, callback) {
+  var self = this;
+
+  if (self.tunnelClient) {
+    self.tunnelClient.connect(options.host, options.port, callback);
+  } else {
+    callback(null, self.createConnection(options));
+  }
+};
+
 // Get the key for a given set of request options
 Agent.prototype.getName = function(options) {
   var name = '';
@@ -264,17 +274,14 @@ Agent.prototype.createSocket = function(req, options, callback) {
 
   debug('createConnection', name, options);
   options.encoding = null;
-  if (self.tunnelClient) {
-    self.tunnelClient.connect(options.host, options.port, function (err, socket) {
-      if (err) {
-        callback(err);
-        return;
-      }
-      self._afterCreateSocket(name, options, socket, callback);
-    });
-  } else {
-    self._afterCreateSocket(name, options, self.createConnection(options), callback);
-  }
+
+  self._createConnection(options, function (err, socket) {
+    if (err) {
+      callback(err);
+      return;
+    }
+    self._afterCreateSocket(name, options, socket, callback);
+  });
 };
 
 Agent.prototype._afterCreateSocket = function(name, options, s, callback) {

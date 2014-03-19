@@ -76,6 +76,26 @@ inherits(SSLAgent, Agent);
 
 SSLAgent.prototype.createConnection = createConnection;
 
+SSLAgent.prototype._createConnection = function(options, callback) {
+  var self = this;
+
+  if (self.tunnelClient) {
+    self.tunnelClient.connect(options.host, options.port, function (err, socket) {
+      if (err) {
+        callback(err);
+        return;
+      }
+
+      callback(null, tls.connect({
+        servername: options.host,
+        socket: socket
+      }));
+    });
+  } else {
+    callback(null, self.createConnection(options));
+  }
+};
+
 SSLAgent.prototype.getName = function(options) {
   var name = Agent.prototype.getName.call(this, options);
 
